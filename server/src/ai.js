@@ -3,10 +3,19 @@ import { nanoid } from "nanoid";
 /**
  * Story generation via Anthropic Claude.
  *
- * Uses forced tool-use to guarantee schema-valid JSON (Claude returns the
- * structured object as the tool input). Falls back to a deterministic mock
- * generator whenever no API key is set or the API call fails, so the app is
- * always demoable.
+ * Chapter 1 of every chronicle is hand-authored (see chronicles.js) and never
+ * touches the model. From Chapter 2 onward this module continues the book from
+ * the claimed characters and the guild's decisions.
+ *
+ * A "directive" controls what the night asks of the players:
+ *   - "none"        → pure reading, no decision tonight
+ *   - "individual"  → one decision per PLAYER character
+ *   - "group"       → a single dilemma the whole guild votes on
+ *
+ * Characters nobody claimed are non-player side characters; the narrator drives
+ * them with sensible defaults so they feel like they were always part of the
+ * world. Forced tool-use guarantees schema-valid JSON. A deterministic mock
+ * keeps the app fully demoable with no API key.
  */
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -16,81 +25,59 @@ export const usingMock = !API_KEY;
 export const provider = usingMock ? "mock" : `claude (${MODEL})`;
 
 // ---------------------------------------------------------------------------
-// JSON schemas (standard JSON Schema, used as tool input_schema).
+// Schemas
 // ---------------------------------------------------------------------------
-const choiceArraySchema = {
+const optionItems = {
+  type: "object",
+  properties: {
+    id: { type: "string", description: "Short unique id for this option." },
+    label: { type: "string", description: "The action, under 12 words." },
+    hint: { type: "string", description: "A short consequence tease, under 8 words." },
+  },
+  required: ["id", "label"],
+};
+
+const individualDecisionSchema = {
   type: "array",
-  description: "Exactly one decision per player, addressed to their character.",
+  description: "Exactly one decision per PLAYER character. Do NOT create decisions for non-player characters.",
   items: {
     type: "object",
     properties: {
-      user_id: { type: "string", description: "Must match a provided user_id exactly." },
+      user_id: { type: "string", description: "Must exactly match a provided player user_id." },
       character_name: { type: "string" },
-      prompt: { type: "string" },
-      options: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            id: { type: "string", description: "Short unique id for this option." },
-            label: { type: "string" },
-            hint: { type: "string" },
-          },
-          required: ["id", "label"],
-        },
-      },
+      prompt: { type: "string", description: "Addressed to that character, second person." },
+      options: { type: "array", items: optionItems },
     },
     required: ["user_id", "character_name", "prompt", "options"],
   },
 };
 
-const bibleSchema = {
+const groupDecisionSchema = {
   type: "object",
+  description: "A single dilemma the whole guild votes on together.",
   properties: {
-    title: { type: "string" },
-    setting: { type: "string" },
-    tone: { type: "string" },
-    world_state: {
-      type: "string",
-      description: "A running summary of the world, factions, and where things stand.",
-    },
-    characters: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          user_id: { type: "string" },
-          name: { type: "string" },
-          role: { type: "string" },
-          traits: { type: "string" },
-          arc: { type: "string" },
-        },
-        required: ["user_id", "name", "role", "traits", "arc"],
-      },
-    },
-    chapter: {
-      type: "object",
-      properties: {
-        title: { type: "string" },
-        shared_text: { type: "string" },
-        choices: choiceArraySchema,
-      },
-      required: ["title", "shared_text", "choices"],
-    },
+    prompt: { type: "string", description: "The shared question facing the group." },
+    options: { type: "array", items: optionItems },
   },
-  required: ["title", "setting", "tone", "world_state", "characters", "chapter"],
+  required: ["prompt", "options"],
 };
 
-const nextChapterSchema = {
-  type: "object",
-  properties: {
+function chapterSchema(directive) {
+  const properties = {
     title: { type: "string" },
-    shared_text: { type: "string" },
-    world_state: { type: "string" },
-    choices: choiceArraySchema,
-  },
-  required: ["title", "shared_text", "world_state", "choices"],
-};
+    shared_text: { type: "string", description: "The night's chapter prose." },
+    world_state: { type: "string", description: "Updated running summary of the world and where things stand." },
+  };
+  const required = ["title", "shared_text", "world_state"];
+  if (directive === "individual") {
+    properties.decisions = individualDecisionSchema;
+    required.push("decisions");
+  } else if (directive === "group") {
+    properties.group = groupDecisionSchema;
+    required.push("group");
+  }
+  return { type: "object", properties, required };
+}
 
 // ---------------------------------------------------------------------------
 // Low level Claude call (forced tool use -> structured JSON)
@@ -131,108 +118,96 @@ async function callClaude({ system, prompt, tool, maxTokens = 2048 }) {
 }
 
 // ---------------------------------------------------------------------------
-// Prompt builders
+// Prompt building
 // ---------------------------------------------------------------------------
-const STORYTELLER_SYSTEM = `You are the Loremaster of "Babel", a shared bedtime-story engine for a small group of close friends who live far apart and read the same chapter each night.
+const STORYTELLER_SYSTEM = `You are the Loremaster of "Talegate", a shared bedtime-story engine for a small group of close friends who live far apart and read the same chapter each night.
+
+The book has a fixed cast of central characters. Some are played by the friends; the rest are non-player side characters that YOU control with natural, in-character defaults — they should feel like they were always part of the world, never like absent players.
 
 Rules:
-- Write vivid, emotionally warm prose at a relaxing bedtime pace. Literary, present-day style.
-- It is ONE shared story. Every player's character lives in the same world and the chapters reference each other's characters by name.
+- Write vivid, emotionally warm prose at a relaxing bedtime pace. Close third person that follows the named cast. Literary but unfussy.
+- It is ONE shared story. Reference characters by name. Player characters drive the plot; let non-player characters react believably around them.
 - Themes the friends love: loyalty, love, betrayal, reunion, sacrifice. Lean into relationships.
-- Be concise and evocative. Keep each chapter to about 'pagesPerNight' x 120 words (a tight bedtime read), and do NOT exceed it. Quality over quantity.
-- ALWAYS produce exactly one decision per player, addressed to that player's own character, with 2-3 distinct, meaningful options. Keep each option label under 12 words and each hint under 8 words.
-- Use the EXACT user_id values you are given when assigning characters and choices. Never invent user_ids.
-- Return your answer ONLY by calling the provided tool with structured fields.`;
+- Be concise and evocative. Keep each chapter to about 'pagesPerNight' x 120 words and do NOT exceed it. Quality over quantity.
+- Honor the DECISION DIRECTIVE exactly:
+  * none → end on a quiet beat or a question; create NO decisions.
+  * individual → create EXACTLY one decision per player character (use their exact user_id), each with 2-3 distinct, meaningful options. Never create decisions for non-player characters.
+  * group → create EXACTLY one shared dilemma the whole guild votes on, with 2-3 options.
+- Keep every option label under 12 words and every hint under 8 words.
+- Return your answer ONLY by calling the provided tool.`;
 
-// Generous output ceiling so the structured JSON never truncates mid-field.
-// The system prompt keeps prose concise, so actual output (and latency) stays
-// well below these caps; this is just a safety net for verbose generations.
 function tokenBudget(pages, extra = 0) {
   return Math.min(2400 + pages * 300 + extra, 5000);
 }
 
-function profilesBlock(members) {
-  return members
-    .map((m) => {
-      const p = m.profile ?? {};
-      const list = (arr) => (arr && arr.length ? arr.join(", ") : "—");
-      return `- user_id: ${m.user_id}
-  name: ${m.display_name}
-  favorite_books: ${list(p.favorite_books)}
-  favorite_movies: ${list(p.favorite_movies)}
-  favorite_games: ${list(p.favorite_games)}
-  hobbies: ${list(p.hobbies)}
-  interests: ${list(p.interests)}`;
+function castBlock(cast) {
+  return cast
+    .map((c) => {
+      const who = c.user_id ? `PLAYER (user_id ${c.user_id})` : "non-player (you control them)";
+      return `- ${c.name} — ${c.role} [${who}]\n  ${c.traits}`;
     })
     .join("\n");
+}
+
+function directiveLine(directive, playerCount) {
+  if (directive === "individual")
+    return `DECISION DIRECTIVE: individual — end the chapter by giving EACH of the ${playerCount} player character(s) their own decision.`;
+  if (directive === "group")
+    return "DECISION DIRECTIVE: group — end the chapter on ONE dilemma the whole guild must vote on together.";
+  return "DECISION DIRECTIVE: none — no decision tonight; this is a pure reading night.";
+}
+
+function whatHappenedBlock({ decisions, groupDecision }) {
+  if (groupDecision)
+    return `LAST NIGHT THE GUILD COLLECTIVELY CHOSE:\n- "${groupDecision.label}"`;
+  if (decisions && decisions.length)
+    return (
+      "WHAT EACH PLAYER DID LAST NIGHT:\n" +
+      decisions.map((d) => `- ${d.character_name}: "${d.choiceLabel}"`).join("\n")
+    );
+  return "LAST NIGHT: the characters simply lived the previous chapter; no decisions were made.";
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-export async function generateBible({ guild, members, archetype }) {
+export async function generateNextChapter({
+  chronicle,
+  guild,
+  cast,
+  playerCharacters,
+  prevChapterText,
+  decisions,
+  groupDecision,
+  directive,
+  nightNumber,
+}) {
   const pages = guild.pages_per_night;
-  if (usingMock) return mockBible({ guild, members, archetype });
+  if (usingMock)
+    return mockNextChapter({ chronicle, cast, playerCharacters, decisions, groupDecision, directive, nightNumber });
 
-  const prompt = `Create the opening of a one-month-long shared story for ${members.length} friends.
+  const prompt = `Continue the shared story "${chronicle.title}". This is night ${nightNumber}.
 
-ARCHETYPE / SETTING: ${archetype.name} — ${archetype.blurb}
+SETTING: ${chronicle.setting}
+TONE: ${chronicle.tone}
 pagesPerNight: ${pages}
 
-THE PLAYERS (craft a character for each, inspired by their tastes):
-${profilesBlock(members)}
-
-Produce:
-1. A story title, setting, tone, and an initial world_state summary.
-2. One character per player (use their exact user_id). Make the character resonate with that player's favorites.
-3. Chapter 1 (the shared opening scene, ~${pages} pages) that introduces the world and brings the characters together.
-4. One decision for each player's character to make tonight.`;
-
-  try {
-    return await callClaude({
-      system: STORYTELLER_SYSTEM,
-      prompt,
-      tool: {
-        name: "save_story_opening",
-        description: "Save the story bible, characters, and opening chapter.",
-        input_schema: bibleSchema,
-      },
-      maxTokens: tokenBudget(pages, members.length * 160 + 400),
-    });
-  } catch (err) {
-    console.error("[ai] generateBible failed, using mock:", err.message);
-    return mockBible({ guild, members, archetype });
-  }
-}
-
-export async function generateNextChapter({ guild, members, archetype, prevChapter, decisions }) {
-  const pages = guild.pages_per_night;
-  if (usingMock) return mockNextChapter({ guild, members, prevChapter, decisions });
-
-  const decisionBlock = decisions
-    .map(
-      (d) =>
-        `- ${d.character_name} (user_id ${d.user_id}) chose: "${d.choiceLabel}"${
-          d.custom_text ? ` (player note: ${d.custom_text})` : ""
-        }`
-    )
-    .join("\n");
-
-  const prompt = `Continue the shared story. This is night ${guild.current_chapter_index + 2}.
-
-SETTING: ${archetype.name}
-pagesPerNight: ${pages}
+THE CAST:
+${castBlock(cast)}
 
 CURRENT WORLD STATE:
-${guild.story_bible?.world_state ?? "(none yet)"}
+${guild.story_bible?.world_state ?? "(the opening chapter has just been read)"}
 
 PREVIOUS CHAPTER:
-${prevChapter.shared_text}
+${prevChapterText}
 
-WHAT EACH PLAYER DECIDED LAST NIGHT:
-${decisionBlock}
+${whatHappenedBlock({ decisions, groupDecision })}
 
-Write the NEXT shared chapter (~${pages} pages) that weaves EVERY player's decision into one coherent continuation — show consequences, let their threads collide, and escalate the relationships (loyalty, love, betrayal). Then update the world_state summary and give each player a fresh decision.`;
+${directiveLine(directive, playerCharacters.length)}
+
+Write the NEXT shared chapter (~${pages} pages) that flows naturally from the previous one and weaves in what happened. Show consequences, let relationships deepen or fracture, and keep non-player characters present and believable. Then update the world_state summary${
+    directive === "none" ? "." : " and produce the required decision(s)."
+  }`;
 
   try {
     return await callClaude({
@@ -240,85 +215,79 @@ Write the NEXT shared chapter (~${pages} pages) that weaves EVERY player's decis
       prompt,
       tool: {
         name: "write_next_chapter",
-        description: "Write the next shared chapter and the new per-player decisions.",
-        input_schema: nextChapterSchema,
+        description: "Write the next shared chapter (and any decisions the directive requires).",
+        input_schema: chapterSchema(directive),
       },
-      maxTokens: tokenBudget(pages, members.length * 120 + 300),
+      maxTokens: tokenBudget(pages, playerCharacters.length * 140 + 400),
     });
   } catch (err) {
     console.error("[ai] generateNextChapter failed, using mock:", err.message);
-    return mockNextChapter({ guild, members, prevChapter, decisions });
+    return mockNextChapter({ chronicle, cast, playerCharacters, decisions, groupDecision, directive, nightNumber });
   }
 }
 
 // ---------------------------------------------------------------------------
-// Mock generators (deterministic-ish, character + choice aware) so the app is
-// fully demoable without an ANTHROPIC_API_KEY.
+// Mock generator (deterministic, cast + decision aware) so the app is fully
+// demoable without an ANTHROPIC_API_KEY.
 // ---------------------------------------------------------------------------
-const ROLE_SETS = {
-  medieval_fantasy: ["the exiled knight", "the hedge-witch", "the thief-turned-spy", "the young heir"],
-  space_opera: ["the ship's captain", "the rogue engineer", "the diplomat", "the AI-touched pilot"],
-  noir_mystery: ["the tired detective", "the lounge singer", "the forger", "the rookie reporter"],
-  cozy_slice_of_life: ["the baker", "the bookshop owner", "the wandering musician", "the new arrival"],
-  post_apocalyptic: ["the scavenger", "the medic", "the radio operator", "the reluctant leader"],
-  high_school_drama: ["the dreamer", "the captain", "the artist", "the new kid"],
-};
-
-function mockBible({ guild, members, archetype }) {
-  const roles = ROLE_SETS[archetype.id] ?? ROLE_SETS.medieval_fantasy;
-  const characters = members.map((m, i) => ({
-    user_id: m.user_id,
-    name: m.display_name,
-    role: roles[i % roles.length],
-    traits: "loyal, curious, hiding one secret",
-    arc: "will be tested by the people they trust most",
-  }));
-
-  const names = characters.map((c) => `${c.name}, ${c.role}`).join("; ");
-  const shared_text = `The night the lanterns of ${archetype.name.toLowerCase()} guttered low, the friends who had drifted apart were pulled back toward a single point.\n\n${names}.\n\nNone of them had planned to return. Yet here they were, summoned by the same trembling letter, the same impossible rumor. The fire crackled. Somewhere beyond the walls, something old was waking, and it knew their names.\n\nThey had one night to decide who they would be to one another — again.`;
-
-  return {
-    title: `The ${archetype.name} of Babel`,
-    setting: archetype.name,
-    tone: "warm, intimate, slow-burning with rising stakes",
-    world_state: `Setting: ${archetype.name}. ${members.length} old friends reunited under a shared omen. Trust is high but untested. No betrayals yet.`,
-    characters,
-    chapter: {
-      title: "Chapter 1 — The Summons",
-      shared_text,
-      choices: characters.map((c) => mockChoice(c)),
-    },
-  };
+function mockOptions(set) {
+  return set.map((o) => ({ id: nanoid(6), label: o.label, hint: o.hint }));
 }
 
-function mockChoice(character) {
-  return {
-    user_id: character.user_id,
-    character_name: character.name,
-    prompt: `As the fire dies, what does ${character.name} do?`,
-    options: [
-      { id: nanoid(6), label: "Share the secret you've been carrying", hint: "Builds trust, exposes you" },
-      { id: nanoid(6), label: "Keep it hidden and watch the others", hint: "Safer, but distance grows" },
-      { id: nanoid(6), label: "Slip outside toward the waking thing", hint: "Bold, dangerous" },
-    ],
-  };
-}
+function mockNextChapter({ chronicle, cast, playerCharacters, decisions, groupDecision, directive, nightNumber }) {
+  const players = cast.filter((c) => c.user_id);
+  const npcs = cast.filter((c) => !c.user_id);
 
-function mockNextChapter({ guild, members, prevChapter, decisions }) {
-  const consequences = decisions
-    .map((d) => `${d.character_name} chose to ${d.choiceLabel.toLowerCase()}.`)
-    .join(" ");
+  const recap = groupDecision
+    ? `Together they had chosen to ${groupDecision.label.toLowerCase()}, and ${chronicle.setting.split(" — ")[0]} would not soon forget it.`
+    : decisions && decisions.length
+    ? decisions.map((d) => `${d.character_name} chose to ${d.choiceLabel.toLowerCase()}.`).join(" ")
+    : "The night before still hung over them like woodsmoke.";
 
-  const shared_text = `Dawn came grey and uncertain.\n\n${consequences}\n\nWhat none of them expected was how their choices would tangle. A confession met a held tongue; a bold step into the dark left someone behind to wonder. By the time the sun cleared the ridge, the shape of their fellowship had quietly changed — and a new danger had noticed the gap between them.\n\nTonight, each of them must answer for what they did.`;
+  const npcLine = npcs.length
+    ? ` Around them, ${npcs.map((n) => n.name).join(" and ")} kept to old habits — steady, watchful, exactly as they had always been.`
+    : "";
 
-  return {
-    title: `Chapter ${guild.current_chapter_index + 2}`,
+  const shared_text = [
+    `Night ${nightNumber} came slow and grey.`,
+    `${recap}${npcLine}`,
+    `${players.map((p) => p.name).join(", ") || "The guild"} felt the shape of the story bend around what had been done — a confession here, a held tongue there — and somewhere ahead, a new pressure gathered that none of them had chosen but all of them would have to answer.`,
+    directive === "none"
+      ? "Tonight there was nothing to decide. There was only the road, and each other, and the quiet."
+      : "By the time the light failed, a choice was waiting.",
+  ].join("\n\n");
+
+  const out = {
+    title: `Chapter ${nightNumber} — ${["The Turning", "Threadbare", "What the Dark Keeps", "Closer", "The Reckoning"][nightNumber % 5]}`,
     shared_text,
-    world_state: `${guild.story_bible?.world_state ?? ""}\nNight ${
-      guild.current_chapter_index + 1
-    }: ${consequences} Tensions rising.`.trim(),
-    choices: (members ?? []).map((m) =>
-      mockChoice({ user_id: m.user_id, name: m.character?.name ?? m.display_name })
-    ),
+    world_state: `${guildWorldSeed(chronicle)} Night ${nightNumber}: ${recap} Tensions rising.`,
   };
+
+  if (directive === "individual") {
+    out.decisions = playerCharacters.map((pc) => ({
+      user_id: pc.user_id,
+      character_name: pc.character_name,
+      prompt: `The moment turns to ${pc.character_name}. What do they do?`,
+      options: mockOptions([
+        { label: "Trust the others with the truth", hint: "Builds the bond, costs you cover" },
+        { label: "Keep your own counsel for now", hint: "Safer, but distance grows" },
+        { label: "Act alone, before anyone can object", hint: "Bold, dangerous" },
+      ]),
+    }));
+  } else if (directive === "group") {
+    out.group = {
+      prompt: "The guild must decide together — which way now?",
+      options: mockOptions([
+        { label: "Press forward into the unknown", hint: "Bold, irreversible" },
+        { label: "Hold here and fortify", hint: "Safe, but time is short" },
+        { label: "Split the difference and scout first", hint: "Cautious, slower" },
+      ]),
+    };
+  }
+
+  return out;
+}
+
+function guildWorldSeed(chronicle) {
+  return `Setting: ${chronicle.setting}.`;
 }

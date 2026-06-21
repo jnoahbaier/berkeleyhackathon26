@@ -1,0 +1,239 @@
+# Talegate Mobile — Cursor Rules
+
+## Overview
+This is a React Native / Expo (TypeScript) app. All design decisions flow from
+the Talegate Design System. Before writing any UI code, read these rules.
+
+---
+
+## 1. Always use design tokens — never hardcode values
+
+All tokens live in `mobile/src/theme/theme.ts`. Import from there:
+
+```ts
+import {
+  colors, fonts, fontSize, space, radius, shadow,
+  text as type, gradients, motion,
+} from '../theme/theme';
+// (adjust relative path as needed)
+```
+
+**Never** hardcode: hex colors, font sizes, spacing numbers, border radii, or
+shadow values. Every one of those has a named token.
+
+---
+
+## 2. Colors
+
+Use semantic aliases from `colors` — not raw `palette` values:
+
+| Use case | Token |
+|---|---|
+| App background | `colors.bgApp` |
+| Card surface | `colors.surfaceCard` |
+| Sunken well / input bg | `colors.surfaceSunk` |
+| Primary text | `colors.textStrong` |
+| Body text | `colors.textBody` |
+| Muted / placeholder | `colors.textMuted` / `colors.textPlaceholder` |
+| Brand (primary actions) | `colors.brand` (indigo #423AA0) |
+| Accent (warmth, highlights) | `colors.accent` (candle amber #E89B3C) |
+| Danger | `colors.danger` |
+| Hairline border | `colors.borderHairline` |
+| Night bg | `colors.nightBg` |
+| Night card | `colors.nightCard` |
+| Night text | `colors.nightText` |
+
+Rules:
+- **Accent (`candle amber`) is for focal warmth only** — highlights, the "lit"
+  chapter state, `.club` wordmark. Never use it for large fills or buttons.
+- **Brand (indigo) is for primary actions, links, active states.**
+- Night mode surfaces: `nightBg → nightRaised → nightCard`; text: `nightText`.
+
+---
+
+## 3. Typography
+
+Use the ready-made `text` presets (spread directly into `style`):
+
+```ts
+// ✅ correct
+<Text style={type.h1}>Tonight's chapter</Text>
+<Text style={[type.body, { color: colors.textSecondary }]}>…</Text>
+
+// ❌ wrong — never hardcode
+<Text style={{ fontSize: 32, fontWeight: 'bold' }}>…</Text>
+```
+
+**Available presets:** `displayXl`, `displayLg`, `h1`–`h4`, `bodyLg`, `body`,
+`bodySm`, `bodyXs`, `serifDisplay`, `readXl`, `readLg`, `read`, `label`, `labelSm`.
+
+Font families — **always set `fontFamily`, never `fontWeight`** in React Native:
+
+| Family | Use | Weight keys |
+|---|---|---|
+| Schibsted Grotesk | UI, headings, buttons | `fonts.sans.regular/medium/semibold/bold/extrabold` |
+| Newsreader (serif) | Story text, reading | `fonts.serif.regular/medium/semibold/italic` |
+| Geist Mono | Metadata labels only | `fonts.mono.regular/medium/semibold` |
+
+Mono labels → **UPPERCASE, wide tracking** — `CHAPTER 04 · NIGHT 12`.
+Everywhere else → **sentence case** — no Title Case Buttons.
+
+---
+
+## 4. Spacing
+
+4 px grid via `space[n]`:
+
+| Token | Value | Common use |
+|---|---|---|
+| `space[2]` | 4 px | tight gap |
+| `space[3]` | 8 px | icon gap, small padding |
+| `space[4]` | 12 px | chip padding |
+| `space[5]` | 16 px | input padding |
+| `space[6]` | 20 px | screen/card padding |
+| `space[7]` | 24 px | section gap |
+| `space[8]` | 32 px | large section gap |
+| `space[10]` | 48 px | screen bottom padding |
+
+---
+
+## 5. Border radius
+
+**Nothing sharp.** `radius.xs` (8) is the minimum:
+
+| Context | Token | Value |
+|---|---|---|
+| Inputs, chips | `radius.md` | 18 |
+| Cards | `radius.lg` | 26 |
+| Large cards / sheets | `radius.xl` / `radius.x2l` | 34 / 44 |
+| Buttons, pills | `radius.pill` | 999 |
+
+---
+
+## 6. Shadows
+
+Spread shadow objects into style — **soft, warm-tinted, low-opacity**:
+
+```ts
+style={[styles.card, shadow.md]}
+```
+
+`shadow.none / xs / sm / md / lg / xl` — use `md` for most cards.
+`shadow.glow` — candle amber glow, for focal/active brand elements at night only.
+
+---
+
+## 7. Gradients
+
+Use with `expo-linear-gradient`:
+
+```ts
+import { LinearGradient } from 'expo-linear-gradient';
+import { gradients } from '../theme/theme';
+
+<LinearGradient {...gradients.dusk} style={StyleSheet.absoluteFill} />
+```
+
+- `gradients.dusk` — sage→wheat→peach→lilac. **The hero motif.** Use large and
+  quiet behind bold dark type (launch screens, story headers, Shelf backdrop).
+- `gradients.night` — indigo→plum→amber. Reader chapter intro, splash.
+- `gradients.glow` — radial amber. Behind focal cover art / active character.
+
+**Never** use: harsh saturated gradients, blue-purple "AI" gradients, neon.
+
+---
+
+## 8. Existing UI components — use before building new ones
+
+`mobile/src/components/ui.tsx` exports:
+
+```
+Screen          — SafeAreaView + parchment bg, scroll optional
+Title           — h1 preset
+Heading         — h2 preset
+Body            — body, accepts dim prop
+Caption         — bodySm + muted
+Label           — mono UPPERCASE label
+Reading         — serif Newsreader read preset
+Card            — elevation sm|md|lg, onNight, interactive, onPress
+Button          — variant primary|accent|secondary|ghost|danger, size sm|md|lg
+Field           — labeled TextInput
+TagInput        — comma-delimited tag entry
+Pill            — status chip, tone default|success|accent|brand
+Avatar          — guild-seat initials, seat 1–4
+Loading         — centered ActivityIndicator
+```
+
+Only build a new primitive when none of these fit. Mirror the pattern in
+`ui.tsx` when you do: named export, spread `style` prop, tokens only.
+
+---
+
+## 9. Brand voice — copy rules
+
+- **Sentence case everywhere.** Buttons, headings, nav labels, toasts.
+  The only exception: mono metadata labels → `UPPERCASE`.
+- **Tone:** warm, intimate, unhurried. Like dimmed lights at bedtime.
+  Not hustle-y, not gamified, not streak-shaming.
+- **People:** "you", "your guild", "guildmates". The group is a "guild".
+  A story run is a "tale" or "chapter". The nightly drop is "tonight's chapter".
+- **Emoji:** essentially none in product chrome. Only 🌙 as a rare brand
+  garnish (e.g. push notification suffix). Never inline in sentences.
+- **Numbers:** meaningful only — "Night 12 of 30", "3 of 4 chose." No vanity metrics.
+
+Good examples:
+- Empty state: *"No tale yet. Pick one tonight — your guild reads at 10."*
+- Locked choice: *"Your word is sealed. The others have until 10pm."*
+- Notification: *"Tonight's chapter is lit. 🌙"*
+
+---
+
+## 10. What NOT to do
+
+```ts
+// ❌ hardcoded color
+backgroundColor: '#423AA0'
+// ✅
+backgroundColor: colors.brand
+
+// ❌ fontWeight in RN
+fontWeight: 'bold'
+// ✅
+fontFamily: fonts.sans.bold
+
+// ❌ sharp corners
+borderRadius: 4
+// ✅
+borderRadius: radius.sm  // 12 minimum for cards
+
+// ❌ magic spacing number
+padding: 20
+// ✅
+padding: space[6]
+
+// ❌ invented accent color
+color: '#FF6B6B'
+// ✅ use danger, success, or guild seat colors from theme
+
+// ❌ Title Case Button
+<Button title="Create Guild" />
+// ✅
+<Button title="Create guild" />
+```
+
+---
+
+## 11. File / folder conventions
+
+```
+mobile/
+  app/            Expo Router screens (file-based routing)
+  src/
+    components/   Shared UI — ui.tsx for primitives, one file per feature component
+    lib/          API client, socket, helpers
+    theme/        theme.ts — single source of truth for tokens
+  assets/         App icon, splash, fonts (loaded by app.json)
+```
+
+New screens go in `app/`. New shared components go in `src/components/`.
+Never put design values (colors, fonts, spacing) anywhere except `theme.ts`.

@@ -6,11 +6,16 @@ import { Server as SocketServer } from "socket.io";
 import { customAlphabet, nanoid } from "nanoid";
 
 import { db } from "./db.js";
-import { ARCHETYPES, archetypeById, suggestArchetype } from "./archetypes.js";
-import { generateBible, generateNextChapter, usingMock, provider } from "./ai.js";
+import { CHRONICLES, chronicleById, chronicleSummary } from "./chronicles.js";
+import { generateNextChapter, usingMock, provider } from "./ai.js";
 
 const PORT = process.env.PORT || 4000;
 const inviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
+
+// A decision lands roughly every N nights after casting. Tunable: lower = more
+// frequent decisions (livelier demo), higher = closer to the "every ~5 days"
+// cadence. Decisions alternate individual → group → individual → …
+const DECISION_EVERY = 3;
 
 const app = express();
 app.use(cors());
@@ -33,6 +38,17 @@ function emitGuild(guildId, event, payload) {
 }
 
 // ---------------------------------------------------------------------------
+// Decision schedule
+// ---------------------------------------------------------------------------
+/** What the chapter at this index asks of the players. */
+function directiveForIndex(idx) {
+  if (idx <= 0) return "casting";
+  if (idx % DECISION_EVERY !== 0) return "none";
+  const decisionNumber = idx / DECISION_EVERY; // 1, 2, 3, …
+  return decisionNumber % 2 === 1 ? "individual" : "group";
+}
+
+// ---------------------------------------------------------------------------
 // Serializers
 // ---------------------------------------------------------------------------
 function profileFor(userId) {
@@ -50,10 +66,30 @@ function memberView(m) {
   };
 }
 
+/** Full cast = chronicle roster + who (if anyone) claimed each seat. */
+function castFor(guild) {
+  const roster = guild.story_bible?.characters ?? [];
+  const casting = guild.current_chapter_index <= 0;
+  return roster.map((c) => {
+    const claimer = c.user_id ? db.find("users", (u) => u.id === c.user_id) : null;
+    return {
+      id: c.id,
+      name: c.name,
+      role: c.role,
+      blurb: c.blurb ?? null,
+      traits: c.traits ?? null,
+      user_id: c.user_id ?? null,
+      claimed_by_name: claimer?.display_name ?? null,
+      // Unclaimed seats only become NPCs once casting is over.
+      is_npc: !c.user_id && !casting,
+    };
+  });
+}
+
 function chapterView(chapter) {
   if (!chapter) return null;
   const choices = db.filter("choices", (c) => c.chapter_id === chapter.id);
-  return { ...chapter, choices };
+  return { ...chapter, decision_type: chapter.decision_type ?? "none", choices };
 }
 
 function serializeGuild(guild) {
@@ -67,11 +103,13 @@ function serializeGuild(guild) {
   return {
     ...guild,
     members,
+    cast: castFor(guild),
     chapters: chapters.map((c) => ({
       id: c.id,
       idx: c.idx,
       title: c.title,
       status: c.status,
+      decision_type: c.decision_type ?? "none",
       released_at: c.released_at,
     })),
     current_chapter: chapterView(current),
@@ -94,8 +132,8 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, ai: usingMock ? "mock" : "claude", provider });
 });
 
-app.get("/api/archetypes", (_req, res) => {
-  res.json({ archetypes: ARCHETYPES });
+app.get("/api/chronicles", (_req, res) => {
+  res.json({ chronicles: CHRONICLES.map(chronicleSummary) });
 });
 
 // ---------------------------------------------------------------------------
@@ -136,16 +174,18 @@ app.put("/api/users/:id/profile", (req, res) => {
 // Guilds
 // ---------------------------------------------------------------------------
 app.post("/api/guilds", (req, res) => {
-  const { name, player_count, pages_per_night, release_time, archetype, created_by } =
+  const { name, player_count, pages_per_night, release_time, chronicle_id, created_by } =
     req.body ?? {};
   if (!created_by || !db.find("users", (u) => u.id === created_by))
     return res.status(400).json({ error: "valid created_by required" });
 
+  const chronicle = chronicleById(chronicle_id) ?? CHRONICLES[0];
+
   const guild = db.insert("guilds", {
     id: nanoid(),
-    name: name?.trim() || "Our Story",
+    name: name?.trim() || chronicle.title,
     invite_code: inviteCode(),
-    archetype: archetype ?? null,
+    chronicle_id: chronicle.id,
     player_count: Math.min(Math.max(Number(player_count) || 2, 2), 4),
     pages_per_night: Math.min(Math.max(Number(pages_per_night) || 2, 1), 6),
     release_time: release_time || "22:00",
@@ -219,7 +259,6 @@ app.patch("/api/guilds/:id", (req, res) => {
   if (!guild) return;
   const patch = {};
   if (typeof req.body?.name === "string") patch.name = req.body.name.trim();
-  if (typeof req.body?.archetype === "string") patch.archetype = req.body.archetype;
   if (req.body?.pages_per_night != null)
     patch.pages_per_night = Math.min(Math.max(Number(req.body.pages_per_night) || 2, 1), 6);
   const updated = db.update("guilds", (g) => g.id === guild.id, patch);
@@ -228,90 +267,86 @@ app.patch("/api/guilds/:id", (req, res) => {
   res.json({ guild: out });
 });
 
-app.patch("/api/guilds/:id/members/:userId/character", (req, res) => {
+// ---------------------------------------------------------------------------
+// Claim a character (first-come-first-serve, on the casting night)
+// ---------------------------------------------------------------------------
+app.post("/api/guilds/:id/claim", (req, res) => {
   const guild = findGuildOr404(req, res);
   if (!guild) return;
-  const member = db.update(
+  const { user_id, character_id } = req.body ?? {};
+
+  if (guild.status !== "active" || guild.current_chapter_index !== 0)
+    return res.status(409).json({ error: "Casting is closed" });
+
+  const member = db.find(
     "guild_members",
-    (m) => m.guild_id === guild.id && m.user_id === req.params.userId,
-    { character: req.body?.character ?? null }
+    (m) => m.guild_id === guild.id && m.user_id === user_id
   );
-  if (!member) return res.status(404).json({ error: "Member not found" });
-  const out = serializeGuild(guild);
+  if (!member) return res.status(404).json({ error: "You are not in this guild" });
+
+  const roster = guild.story_bible?.characters ?? [];
+  const target = roster.find((c) => c.id === character_id);
+  if (!target) return res.status(404).json({ error: "No such character" });
+  if (target.user_id && target.user_id !== user_id)
+    return res.status(409).json({ error: "That character is already taken" });
+
+  // First-come-first-serve: free any seat this user held, then take the new one.
+  for (const c of roster) if (c.user_id === user_id) c.user_id = null;
+  target.user_id = user_id;
+
+  db.update("guilds", (g) => g.id === guild.id, {
+    story_bible: { ...guild.story_bible, characters: roster },
+  });
+  db.update("guild_members", (m) => m.id === member.id, {
+    character: { id: target.id, name: target.name, role: target.role, traits: target.traits, blurb: target.blurb ?? null },
+  });
+
+  const out = serializeGuild(db.find("guilds", (g) => g.id === guild.id));
   emitGuild(guild.id, "guild:update", out);
   res.json({ guild: out });
 });
 
-// Suggest an archetype from the combined player profiles
-app.get("/api/guilds/:id/suggested-archetype", (req, res) => {
-  const guild = findGuildOr404(req, res);
-  if (!guild) return;
-  const profiles = db
-    .filter("guild_members", (m) => m.guild_id === guild.id)
-    .map((m) => profileFor(m.user_id))
-    .filter(Boolean);
-  res.json(suggestArchetype(profiles));
-});
-
 // ---------------------------------------------------------------------------
-// Start story  ->  generate bible + chapter 1
+// Start story  ->  seat the fixed opening chapter; players then claim roles
 // ---------------------------------------------------------------------------
-app.post("/api/guilds/:id/start", async (req, res) => {
+app.post("/api/guilds/:id/start", (req, res) => {
   const guild = findGuildOr404(req, res);
   if (!guild) return;
   if (guild.status !== "lobby")
     return res.status(409).json({ error: "Story already started" });
 
-  const members = db
-    .filter("guild_members", (m) => m.guild_id === guild.id)
-    .map((m) => ({ ...m, ...memberView(m) }));
+  const members = db.filter("guild_members", (m) => m.guild_id === guild.id);
   if (members.length < 2)
     return res.status(400).json({ error: "Need at least 2 players to begin" });
 
-  let archetype = archetypeById(guild.archetype);
-  if (!archetype) {
-    const profiles = members.map((m) => m.profile).filter(Boolean);
-    archetype = suggestArchetype(profiles).archetype;
-    db.update("guilds", (g) => g.id === guild.id, { archetype: archetype.id });
-  }
+  const chronicle = chronicleById(guild.chronicle_id) ?? CHRONICLES[0];
 
-  try {
-    const bible = await generateBible({ guild, members, archetype });
+  db.update("guilds", (g) => g.id === guild.id, {
+    chronicle_id: chronicle.id,
+    status: "active",
+    current_chapter_index: 0,
+    story_bible: {
+      chronicle_id: chronicle.id,
+      title: chronicle.title,
+      setting: chronicle.setting,
+      tone: chronicle.tone,
+      world_state: `Setting: ${chronicle.setting}. The opening chapter has just been read; the friends are about to choose who they'll be.`,
+      characters: chronicle.characters.map((c) => ({ ...c, user_id: null })),
+    },
+  });
 
-    for (const ch of bible.characters ?? []) {
-      db.update(
-        "guild_members",
-        (m) => m.guild_id === guild.id && m.user_id === ch.user_id,
-        { character: { name: ch.name, role: ch.role, traits: ch.traits, arc: ch.arc } }
-      );
-    }
+  // The fixed Chapter 1 — identical for every guild. No decisions; this is the
+  // casting night (read, then claim a character).
+  createChapter(guild.id, 0, chronicle.first_chapter, "casting");
 
-    db.update("guilds", (g) => g.id === guild.id, {
-      status: "active",
-      current_chapter_index: 0,
-      story_bible: {
-        title: bible.title,
-        setting: bible.setting,
-        tone: bible.tone,
-        world_state: bible.world_state,
-      },
-    });
-
-    const chapter = createChapter(guild.id, 0, bible.chapter);
-    persistChoices(chapter.id, bible.chapter.choices, members);
-
-    const out = serializeGuild(db.find("guilds", (g) => g.id === guild.id));
-    emitGuild(guild.id, "guild:update", out);
-    emitGuild(guild.id, "chapter:new", out.current_chapter);
-    res.json({ guild: out });
-  } catch (err) {
-    console.error("start failed", err);
-    res.status(500).json({ error: "Failed to generate the story" });
-  }
+  const out = serializeGuild(db.find("guilds", (g) => g.id === guild.id));
+  emitGuild(guild.id, "guild:update", out);
+  emitGuild(guild.id, "chapter:new", out.current_chapter);
+  res.json({ guild: out });
 });
 
 // ---------------------------------------------------------------------------
-// Submit a choice
+// Submit a choice / cast a vote
 // ---------------------------------------------------------------------------
 app.post("/api/chapters/:chapterId/choices", (req, res) => {
   const { user_id, selected_option, custom_text } = req.body ?? {};
@@ -353,54 +388,85 @@ app.post("/api/guilds/:id/advance", async (req, res) => {
     .filter("guild_members", (m) => m.guild_id === guild.id)
     .map((m) => ({ ...m, ...memberView(m) }));
 
-  // Collect decisions, auto-filling anyone who didn't submit (keeps the guild aligned).
-  const decisions = members.map((m) => {
-    const choice = db.find(
-      "choices",
-      (c) => c.chapter_id === current.id && c.user_id === m.user_id
-    );
-    let selected = choice?.selected_option;
-    let autoFilled = false;
-    if (!choice?.submitted_at) {
-      selected = choice?.options?.[0]?.id ?? null;
-      autoFilled = true;
-      db.update(
-        "choices",
-        (c) => c.chapter_id === current.id && c.user_id === m.user_id,
-        { selected_option: selected, submitted_at: new Date().toISOString(), auto_filled: true }
-      );
-    }
-    const opt = choice?.options?.find((o) => o.id === selected);
-    return {
-      user_id: m.user_id,
-      character_name: m.character?.name ?? m.display_name,
-      choiceLabel: choice?.custom_text || opt?.label || "do nothing and wait",
-      custom_text: choice?.custom_text ?? null,
-      auto_filled: autoFilled,
-    };
-  });
+  const decisionType = current.decision_type ?? "none";
 
-  const archetype = archetypeById(guild.archetype) ?? ARCHETYPES[0];
+  // On the casting night, everyone must have claimed a character first.
+  if (decisionType === "casting") {
+    const unseated = members.filter((m) => !m.character);
+    if (unseated.length)
+      return res.status(400).json({ error: "Everyone must pick a character first" });
+  }
+
+  // Gather what happened this chapter.
+  let decisions = [];
+  let groupDecision = null;
+
+  if (decisionType === "individual") {
+    decisions = members
+      .filter((m) => m.character)
+      .map((m) => {
+        const choice = db.find(
+          "choices",
+          (c) => c.chapter_id === current.id && c.user_id === m.user_id
+        );
+        let selected = choice?.selected_option;
+        let autoFilled = false;
+        if (choice && !choice.submitted_at) {
+          selected = choice.options?.[0]?.id ?? null;
+          autoFilled = true;
+          db.update(
+            "choices",
+            (c) => c.chapter_id === current.id && c.user_id === m.user_id,
+            { selected_option: selected, submitted_at: new Date().toISOString(), auto_filled: true }
+          );
+        }
+        const opt = choice?.options?.find((o) => o.id === selected);
+        return {
+          user_id: m.user_id,
+          character_name: m.character?.name ?? m.display_name,
+          choiceLabel: choice?.custom_text || opt?.label || "do nothing and wait",
+        };
+      });
+  } else if (decisionType === "group") {
+    groupDecision = tallyGroupVote(current);
+  }
+
+  const chronicle = chronicleById(guild.chronicle_id) ?? CHRONICLES[0];
+  const cast = castFor(guild).map((c) => ({
+    id: c.id,
+    name: c.name,
+    role: c.role,
+    traits: c.traits,
+    user_id: c.user_id,
+  }));
+  const playerCharacters = cast
+    .filter((c) => c.user_id)
+    .map((c) => ({ user_id: c.user_id, character_name: c.name }));
+
+  const newIdx = guild.current_chapter_index + 1;
+  const directive = directiveForIndex(newIdx);
 
   try {
     const next = await generateNextChapter({
+      chronicle,
       guild,
-      members,
-      archetype,
-      prevChapter: current,
+      cast,
+      playerCharacters,
+      prevChapterText: current.shared_text,
       decisions,
+      groupDecision,
+      directive,
+      nightNumber: newIdx + 1,
     });
 
     db.update("chapters", (c) => c.id === current.id, { status: "resolved" });
-
-    const newIdx = guild.current_chapter_index + 1;
     db.update("guilds", (g) => g.id === guild.id, {
       current_chapter_index: newIdx,
       story_bible: { ...(guild.story_bible ?? {}), world_state: next.world_state },
     });
 
-    const chapter = createChapter(guild.id, newIdx, next);
-    persistChoices(chapter.id, next.choices, members);
+    const chapter = createChapter(guild.id, newIdx, next, directive);
+    persistDecisions(chapter.id, next, members, directive);
 
     const out = serializeGuild(db.find("guilds", (g) => g.id === guild.id));
     emitGuild(guild.id, "guild:update", out);
@@ -415,7 +481,7 @@ app.post("/api/guilds/:id/advance", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Helpers used by start/advance
 // ---------------------------------------------------------------------------
-function createChapter(guildId, idx, payload) {
+function createChapter(guildId, idx, payload, decisionType) {
   return db.insert("chapters", {
     id: nanoid(),
     guild_id: guildId,
@@ -423,32 +489,95 @@ function createChapter(guildId, idx, payload) {
     title: payload.title ?? `Chapter ${idx + 1}`,
     shared_text: payload.shared_text ?? "",
     audio_url: null,
+    decision_type: decisionType ?? "none",
     status: "released",
     released_at: new Date().toISOString(),
   });
 }
 
-function persistChoices(chapterId, choices, members) {
-  const memberIds = new Set(members.map((m) => m.user_id));
-  for (const c of choices ?? []) {
-    if (!memberIds.has(c.user_id)) continue;
-    db.insert("choices", {
-      id: nanoid(),
-      chapter_id: chapterId,
-      user_id: c.user_id,
-      character_name: c.character_name ?? null,
-      prompt: c.prompt ?? "What do you do?",
-      options: (c.options ?? []).map((o) => ({
-        id: o.id || nanoid(6),
-        label: o.label,
-        hint: o.hint ?? null,
-      })),
-      selected_option: null,
-      custom_text: null,
-      submitted_at: null,
-      auto_filled: false,
-    });
+/** Create the per-player choice rows for the new chapter, based on directive. */
+function persistDecisions(chapterId, next, members, directive) {
+  const players = members.filter((m) => m.character);
+
+  if (directive === "individual") {
+    const byUser = new Map((next.decisions ?? []).map((d) => [d.user_id, d]));
+    for (const m of players) {
+      const d = byUser.get(m.user_id);
+      db.insert("choices", {
+        id: nanoid(),
+        chapter_id: chapterId,
+        user_id: m.user_id,
+        character_name: m.character?.name ?? null,
+        kind: "individual",
+        prompt: d?.prompt ?? `What does ${m.character?.name ?? "your character"} do?`,
+        options: normalizeOptions(d?.options),
+        selected_option: null,
+        custom_text: null,
+        submitted_at: null,
+        auto_filled: false,
+      });
+    }
+  } else if (directive === "group") {
+    const prompt = next.group?.prompt ?? "What should the guild do?";
+    const options = normalizeOptions(next.group?.options);
+    for (const m of players) {
+      db.insert("choices", {
+        id: nanoid(),
+        chapter_id: chapterId,
+        user_id: m.user_id,
+        character_name: m.character?.name ?? null,
+        kind: "group",
+        prompt,
+        options,
+        selected_option: null,
+        custom_text: null,
+        submitted_at: null,
+        auto_filled: false,
+      });
+    }
   }
+  // "none" / "casting": no choice rows.
+}
+
+function normalizeOptions(options) {
+  const list = (options ?? []).map((o) => ({
+    id: o.id || nanoid(6),
+    label: o.label,
+    hint: o.hint ?? null,
+  }));
+  return list.length
+    ? list
+    : [
+        { id: nanoid(6), label: "Press on", hint: null },
+        { id: nanoid(6), label: "Hold back", hint: null },
+      ];
+}
+
+/** Majority vote among players for a group-decision chapter. */
+function tallyGroupVote(chapter) {
+  const choices = db.filter("choices", (c) => c.chapter_id === chapter.id);
+  const options = choices[0]?.options ?? [];
+  const prompt = choices[0]?.prompt ?? "The guild's decision";
+  const tally = new Map();
+  for (const c of choices) {
+    if (c.submitted_at && c.selected_option)
+      tally.set(c.selected_option, (tally.get(c.selected_option) ?? 0) + 1);
+  }
+  let winnerId = options[0]?.id ?? null;
+  let best = -1;
+  for (const [id, n] of tally) {
+    if (n > best) {
+      best = n;
+      winnerId = id;
+    }
+  }
+  const winner = options.find((o) => o.id === winnerId);
+  return {
+    prompt,
+    option_id: winnerId,
+    label: winner?.label ?? "stay the course",
+    votes: best < 0 ? 0 : best,
+  };
 }
 
 function choiceStatus(chapter) {

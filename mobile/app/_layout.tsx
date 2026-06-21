@@ -63,11 +63,12 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: colors.bgApp },
           }}
         >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ title: "Your reading profile" }} />
-          <Stack.Screen name="home" options={{ title: "Talegate", headerBackVisible: false }} />
-          <Stack.Screen name="guild/create" options={{ title: "New guild" }} />
-          <Stack.Screen name="guild/join" options={{ title: "Join a guild" }} />
+          <Stack.Screen name="settings" options={{ headerShown: false, presentation: "modal" }} />
+          <Stack.Screen name="home" options={{ headerShown: false }} />
+          <Stack.Screen name="guild/create" options={{ headerShown: false }} />
+          <Stack.Screen name="guild/join" options={{ headerShown: false }} />
           <Stack.Screen name="guild/[id]/index" options={{ title: "" }} />
           <Stack.Screen name="guild/[id]/timeline" options={{ title: "Story so far" }} />
           <Stack.Screen name="design-check" options={{ title: "Design check" }} />

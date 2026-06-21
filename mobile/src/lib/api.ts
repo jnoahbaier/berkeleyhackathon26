@@ -51,7 +51,14 @@ export type Profile = {
   hobbies: string[];
   interests: string[];
 };
-export type Character = { name: string; role: string; traits: string; arc: string };
+/** A character a player has claimed (pre-defined by the chronicle). */
+export type Character = {
+  id: string;
+  name: string;
+  role: string;
+  traits: string;
+  blurb?: string | null;
+};
 export type Member = {
   user_id: string;
   display_name: string;
@@ -59,12 +66,25 @@ export type Member = {
   profile: Profile | null;
   joined_at: string;
 };
+/** A seat in the chronicle's cast + who (if anyone) claimed it. */
+export type CastMember = {
+  id: string;
+  name: string;
+  role: string;
+  blurb: string | null;
+  traits: string | null;
+  user_id: string | null;
+  claimed_by_name: string | null;
+  is_npc: boolean;
+};
 export type Option = { id: string; label: string; hint?: string | null };
+export type DecisionType = "casting" | "none" | "individual" | "group";
 export type Choice = {
   id: string;
   chapter_id: string;
   user_id: string;
   character_name: string | null;
+  kind?: "individual" | "group";
   prompt: string;
   options: Option[];
   selected_option: string | null;
@@ -79,32 +99,64 @@ export type Chapter = {
   title: string;
   shared_text: string;
   audio_url: string | null;
+  decision_type: DecisionType;
   status: string;
   released_at: string;
   choices: Choice[];
 };
-export type Archetype = { id: string; name: string; blurb: string };
+export type ChronicleCharacter = {
+  id: string;
+  name: string;
+  role: string;
+  blurb: string;
+  traits: string;
+};
+export type Chronicle = {
+  id: string;
+  title: string;
+  author?: string;
+  blurb: string;
+  sample?: string;
+  setting: string;
+  tone: string;
+  tint: string;
+  characters: ChronicleCharacter[];
+};
 export type Guild = {
   id: string;
   name: string;
   invite_code: string;
-  archetype: string | null;
+  chronicle_id: string | null;
   player_count: number;
   pages_per_night: number;
   release_time: string;
   current_chapter_index: number;
   status: "lobby" | "active";
-  story_bible: { title: string; setting: string; tone: string; world_state: string } | null;
+  story_bible: {
+    chronicle_id?: string;
+    title: string;
+    setting: string;
+    tone: string;
+    world_state: string;
+  } | null;
   created_by: string;
   members: Member[];
-  chapters: { id: string; idx: number; title: string; status: string; released_at: string }[];
+  cast: CastMember[];
+  chapters: {
+    id: string;
+    idx: number;
+    title: string;
+    status: string;
+    decision_type: DecisionType;
+    released_at: string;
+  }[];
   current_chapter: Chapter | null;
 };
 
 // ---- Endpoints ------------------------------------------------------------
 export const api = {
   health: () => request<{ ok: boolean; ai: string }>("/api/health"),
-  archetypes: () => request<{ archetypes: Archetype[] }>("/api/archetypes"),
+  chronicles: () => request<{ chronicles: Chronicle[] }>("/api/chronicles"),
 
   createUser: (display_name: string) =>
     request<{ user: User }>("/api/users", {
@@ -123,7 +175,7 @@ export const api = {
     player_count: number;
     pages_per_night: number;
     release_time?: string;
-    archetype?: string | null;
+    chronicle_id?: string | null;
     created_by: string;
   }) => request<{ guild: Guild }>("/api/guilds", { method: "POST", body: JSON.stringify(body) }),
   joinGuild: (invite_code: string, user_id: string) =>
@@ -133,12 +185,10 @@ export const api = {
     }),
   getGuild: (id: string) => request<{ guild: Guild }>(`/api/guilds/${id}`),
   getChapters: (id: string) => request<{ chapters: Chapter[] }>(`/api/guilds/${id}/chapters`),
-  suggestedArchetype: (id: string) =>
-    request<{ archetype: Archetype; score: number }>(`/api/guilds/${id}/suggested-archetype`),
-  setArchetype: (id: string, archetype: string) =>
-    request<{ guild: Guild }>(`/api/guilds/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ archetype }),
+  claimCharacter: (guildId: string, user_id: string, character_id: string) =>
+    request<{ guild: Guild }>(`/api/guilds/${guildId}/claim`, {
+      method: "POST",
+      body: JSON.stringify({ user_id, character_id }),
     }),
   startStory: (id: string) =>
     request<{ guild: Guild }>(`/api/guilds/${id}/start`, { method: "POST" }),
