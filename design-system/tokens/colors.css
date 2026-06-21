@@ -1,0 +1,122 @@
+/* ============================================================
+   BABEL · COLOR TOKENS
+   A warm, literary, nocturnal palette. Parchment-light by day,
+   deep indigo "night" for reading. One brand indigo, one candle
+   amber accent, plus a four-seat guild palette for characters.
+   ============================================================ */
+
+:root {
+  /* ---- Warm neutrals (ink on parchment) ---- */
+  --ink-900: #16140f; /* primary text — warm near-black */
+  --ink-700: #3b362d; /* strong text */
+  --ink-500: #6b6457; /* secondary text */
+  --ink-400: #8c8474; /* muted / captions */
+  --ink-300: #b6ae9d; /* placeholder / disabled */
+  --ink-200: #d8d0c1; /* subtle dividers on dark surfaces */
+
+  --parchment: #faf6ef; /* app background */
+  --parchment-deep: #f4eee2; /* alternate section bg */
+  --paper: #ffffff; /* cards / raised surfaces */
+  --paper-sunk: #f2ece1; /* inputs / sunken wells */
+  --line: #e7dfd1; /* hairline borders */
+  --line-strong: #d8cfbd; /* emphasised borders */
+
+  /* ---- Brand · Babel Indigo (twilight) ---- */
+  --indigo-800: #2a2563;
+  --indigo-700: #322c7a;
+  --indigo-600: #423aa0; /* primary brand */
+  --indigo-500: #5b50c9; /* hover / lighter */
+  --indigo-300: #a59cec; /* on-night accent */
+  --indigo-100: #ddd9f4;
+  --indigo-50: #eceaf8; /* tint background */
+
+  /* ---- Accent · Candle Amber (the glow) ---- */
+  --candle-700: #c0741f;
+  --candle-600: #d9892c;
+  --candle-500: #e89b3c; /* default accent */
+  --candle-400: #f2b566;
+  --candle-100: #f9e3c4;
+  --candle-50: #fbefdd;
+
+  /* ---- Night · reading surfaces ---- */
+  --night-900: #131120; /* reading background */
+  --night-800: #1c1930; /* raised on night */
+  --night-700: #272340; /* cards on night */
+  --night-600: #37325a; /* borders on night */
+  --night-text: #ede7da; /* warm paper text on night */
+  --night-soft: #c3bcd0; /* secondary on night */
+  --night-muted: #847d99; /* captions on night */
+
+  /* ---- Guild seats · up to 4 characters ---- */
+  --guild-1: #c9756b; /* clay rose */
+  --guild-2: #5e8c7d; /* sage teal */
+  --guild-3: #6b7fc9; /* periwinkle */
+  --guild-4: #d9a441; /* old gold */
+  --guild-1-soft: #f4ddd9;
+  --guild-2-soft: #d9e7e1;
+  --guild-3-soft: #dde3f5;
+  --guild-4-soft: #f5e7c8;
+
+  /* ---- Status ---- */
+  --success-600: #4f8a5b;
+  --success-50: #e6f1e8;
+  --warning-600: #d9892c;
+  --warning-50: #fbefdd;
+  --danger-600: #c5523f; /* betrayal / destructive */
+  --danger-50: #f7e3df;
+
+  /* ---- Dusk gradient stops (the hero motif) ---- */
+  --dusk-sage: #bfcdae;
+  --dusk-peach: #f4d2a6;
+  --dusk-lilac: #d8c3e8;
+  --gradient-dusk: linear-gradient(
+    176deg,
+    #c3d0b4 0%,
+    #e7d6b6 42%,
+    #f4d2a6 64%,
+    #ddc6ea 100%
+  ); /* @kind other */
+  /* Night gradient — used on reading hero / launch */
+  --gradient-night: linear-gradient(
+    168deg,
+    #1a1730 0%,
+    #2a2350 46%,
+    #5a3f6e 78%,
+    #b9752f 116%
+  ); /* @kind other */
+  /* Candle glow — radial warmth behind focal art */
+  --gradient-glow: radial-gradient(
+    120% 90% at 50% 8%,
+    rgba(242, 181, 102, 0.55) 0%,
+    rgba(242, 181, 102, 0) 60%
+  ); /* @kind other */
+
+  /* ============================================================
+     SEMANTIC ALIASES — prefer these in components
+     ============================================================ */
+  --bg-app: var(--parchment);
+  --bg-alt: var(--parchment-deep);
+  --surface-card: var(--paper);
+  --surface-sunk: var(--paper-sunk);
+  --border-hairline: var(--line);
+  --border-strong: var(--line-strong);
+
+  --text-strong: var(--ink-900);
+  --text-body: var(--ink-700);
+  --text-secondary: var(--ink-500);
+  --text-muted: var(--ink-400);
+  --text-placeholder: var(--ink-300);
+  --text-on-brand: #ffffff;
+  --text-on-night: var(--night-text);
+
+  --brand: var(--indigo-600);
+  --brand-hover: var(--indigo-500);
+  --brand-pressed: var(--indigo-700);
+  --brand-tint: var(--indigo-50);
+
+  --accent: var(--candle-500);
+  --accent-hover: var(--candle-400);
+  --accent-tint: var(--candle-50);
+
+  --focus-ring: var(--indigo-500);
+}

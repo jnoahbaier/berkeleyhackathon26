@@ -1,0 +1,58 @@
+/* ============================================================
+   BABEL · TYPOGRAPHY TOKENS
+   Three voices:
+   · Schibsted Grotesk — UI & display. Clean, bold, editorial.
+   · Newsreader        — reading & story. Warm literary serif.
+   · Geist Mono        — metadata labels (Chapter 04 · Night 12).
+   ============================================================ */
+
+:root {
+  --font-sans: "Schibsted Grotesk", "Helvetica Neue", system-ui, -apple-system,
+    sans-serif;
+  --font-serif: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia,
+    serif;
+  --font-mono: "Geist Mono", "SF Mono", ui-monospace, "JetBrains Mono", monospace;
+
+  /* ---- Display & headings (sans) ---- */
+  --text-display-2xl: 64px;
+  --text-display-xl: 52px;
+  --text-display-lg: 40px;
+  --text-h1: 32px;
+  --text-h2: 26px;
+  --text-h3: 21px;
+  --text-h4: 18px;
+
+  /* ---- Body & UI ---- */
+  --text-lg: 18px;
+  --text-base: 16px;
+  --text-sm: 14px;
+  --text-xs: 13px;
+
+  /* ---- Reading (serif) — generous for night reading ---- */
+  --text-read-xl: 26px;
+  --text-read-lg: 22px;
+  --text-read: 20px;
+
+  /* ---- Mono label ---- */
+  --text-label: 12px;
+  --text-label-sm: 11px;
+
+  /* ---- Weights ---- */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---- Line heights ---- */
+  --leading-tight: 1.04;
+  --leading-snug: 1.18;
+  --leading-normal: 1.4;
+  --leading-relaxed: 1.6;
+  --leading-reading: 1.75;
+
+  /* ---- Tracking ---- */
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.011em;
+  --tracking-normal: 0;
+  --tracking-label: 0.14em; /* mono uppercase labels */
+}

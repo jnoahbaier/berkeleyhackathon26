@@ -1,0 +1,17 @@
+<svg width="460" height="120" viewBox="0 0 460 120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Talegate.club">
+  <defs>
+    <linearGradient id="tgGlowN" x1="48" y1="84" x2="48" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2B566" stop-opacity="0.55"></stop>
+      <stop offset="1" stop-color="#F2B566" stop-opacity="0"></stop>
+    </linearGradient>
+  </defs>
+  <rect x="14" y="26" width="68" height="68" rx="21" fill="#272340"></rect>
+  <path d="M34 84 L34 52 A14 14 0 0 1 62 52 L62 84 Z" fill="url(#tgGlowN)"></path>
+  <g stroke="#F2B566" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M34 84 L34 52 A14 14 0 0 1 62 52 L62 84"></path>
+    <path d="M42 84 L45 63"></path>
+    <path d="M54 84 L51 63"></path>
+  </g>
+  <text x="100" y="78" font-family="&#39;Schibsted Grotesk&#39;,&#39;Helvetica Neue&#39;,sans-serif" font-size="50" font-weight="700" letter-spacing="-1.6" fill="#FAF6EF">Talegate</text>
+  <text x="333" y="78" font-family="&#39;Schibsted Grotesk&#39;,&#39;Helvetica Neue&#39;,sans-serif" font-size="50" font-weight="700" letter-spacing="-1.2" fill="#F2B566">.club</text>
+</svg>

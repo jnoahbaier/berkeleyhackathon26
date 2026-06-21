@@ -1,0 +1,73 @@
+<!-- @dsCard group="Components" viewport="700x430" name="Core — Buttons, Badges, Avatars" subtitle="Button · IconButton · Badge · Tag · Avatar" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../../styles.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  body { margin: 0; background: var(--parchment); padding: 26px; }
+  .grid { display: flex; flex-direction: column; gap: 22px; }
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-400); width: 100%; margin-bottom: -8px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+  const { Button, IconButton, Badge, Tag, Avatar, AvatarStack } = window.BabelDesignSystem_2e9b76;
+  const I = (name, size = 20) => {
+    const n = lucide.icons[name];
+    return n ? <span dangerouslySetInnerHTML={{ __html: lucide.createElement(n).outerHTML.replace('<svg ', `<svg width="${size}" height="${size}" `) }} /> : null;
+  };
+  function Demo() {
+    const [tag, setTag] = React.useState(true);
+    return (
+      <div className="grid">
+        <div className="row"><span className="cap">Button — variants &amp; sizes</span>
+          <Button variant="primary">Begin chapter</Button>
+          <Button variant="accent" iconLeft={I('moon', 18)}>Light tonight's chapter</Button>
+          <Button variant="secondary">Maybe later</Button>
+          <Button variant="ghost">Skip</Button>
+          <Button variant="primary" size="sm">Small</Button>
+          <Button variant="primary" disabled>Disabled</Button>
+        </div>
+        <div className="row"><span className="cap">IconButton — the glass key-caps</span>
+          <IconButton label="Help" variant="glass">{I('help-circle')}</IconButton>
+          <IconButton label="Profile" variant="glass">{I('user')}</IconButton>
+          <IconButton label="Brand" variant="brand">{I('book-open')}</IconButton>
+          <IconButton label="Read" variant="solid" size="lg">{I('search', 22)}</IconButton>
+          <IconButton label="Plain" variant="plain">{I('settings')}</IconButton>
+        </div>
+        <div className="row"><span className="cap">Badge</span>
+          <Badge tone="lit" dot>Lit</Badge>
+          <Badge tone="brand">Chapter 04</Badge>
+          <Badge tone="success" dot>Ready</Badge>
+          <Badge tone="danger" dot>Betrayed</Badge>
+          <Badge tone="neutral">Night 12</Badge>
+        </div>
+        <div className="row"><span className="cap">Tag (selectable)</span>
+          <Tag selected={tag} onClick={() => setTag(!tag)} icon={I('book', 15)}>Fantasy</Tag>
+          <Tag onClick={() => {}}>Sci-fi</Tag>
+          <Tag onClick={() => {}}>Slow-burn</Tag>
+          <Tag onClick={() => {}}>Noir</Tag>
+        </div>
+        <div className="row"><span className="cap">Avatar &amp; AvatarStack</span>
+          <Avatar name="Mara Vance" seat={1} size={44} />
+          <Avatar name="Theo" seat={2} size={44} />
+          <Avatar name="Iris Bell" seat={3} size={44} />
+          <Avatar name="Kai" seat={4} size={44} />
+          <div style={{ width: 16 }} />
+          <AvatarStack size={40} members={[{name:'Mara',seat:1},{name:'Theo',seat:2},{name:'Iris',seat:3},{name:'Kai',seat:4},{name:'Sun',seat:1}]} />
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+</script>
+</body>
+</html>

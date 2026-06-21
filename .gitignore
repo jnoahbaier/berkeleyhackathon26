@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+*.log
+
+# server runtime
+server/data/
+server/.env
+
+# expo
+mobile/.expo/
+mobile/dist/

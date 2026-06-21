@@ -1,0 +1,53 @@
+<!-- @dsCard group="Talegate App" viewport="900x720" name="Talegate — the app" subtitle="Interactive: Shelf → guild → character → the night reader" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Talegate — app</title>
+<link rel="stylesheet" href="../../styles.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    background:
+      radial-gradient(120% 80% at 50% -10%, #efeae0 0%, #e7e0d4 60%, #ded6c8 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+    box-sizing: border-box;
+    font-family: var(--font-sans);
+  }
+  #stage { display: flex; gap: 56px; align-items: center; }
+  .pitch { max-width: 320px; }
+  .pitch .mark { height: 40px; margin-bottom: 26px; }
+  .pitch h1 { font-family: var(--font-sans); font-weight: 700; font-size: 40px; line-height: 1.05; letter-spacing: -0.03em; color: var(--ink-900); margin: 0 0 18px; }
+  .pitch p { font-family: var(--font-serif); font-size: 18px; line-height: 1.6; color: var(--ink-600,#6b6457); margin: 0 0 24px; }
+  .pitch .hint { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-400); display: flex; align-items: center; gap: 8px; }
+  @media (max-width: 820px) { .pitch { display: none; } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="pitch">
+    <img class="mark" src="../../assets/talegate-wordmark.svg" alt="Talegate" />
+    <h1>Read the same story, apart together.</h1>
+    <p>Two to four friends. One tale, a month long. A new chapter every night at ten — and your choices bend it. This is the shipping app: browse the shelf, set up your guild, build a character, then fall into the night reader.</p>
+    <div class="hint">↓ Try it — tap through the phone</div>
+  </div>
+  <div id="root"></div>
+</div>
+<script src="frame.jsx" type="text/babel" data-presets="react"></script>
+<script src="home.jsx" type="text/babel" data-presets="react"></script>
+<script src="shelf.jsx" type="text/babel" data-presets="react"></script>
+<script src="setup.jsx" type="text/babel" data-presets="react"></script>
+<script src="reader.jsx" type="text/babel" data-presets="react"></script>
+<script src="app.jsx" type="text/babel" data-presets="react"></script>
+</body>
+</html>
