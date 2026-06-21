@@ -1,6 +1,6 @@
-# Babel
+# Talegate
 
-**A shared bedtime story for friends who live far apart.**
+**A shared bedtime story for friends who live far apart.** → [talegate.club](https://talegate.club)
 
 2-4 friends form a *guild*, read the same chapter each night, and each make a
 choice for their own character. An LLM (Anthropic Claude) weaves everyone's
@@ -24,7 +24,7 @@ Story bible + world state (per guild)
         │             all submitted OR deadline (auto-fills stragglers)
         │                         │
         ▼                         ▼
-  Gemini merges every choice into the next shared chapter + updates world state
+  Claude merges every choice into the next shared chapter + updates world state
 ```
 
 - **One shared chapter per night.** Length scales with the player count, so
@@ -96,7 +96,7 @@ set `EXPO_PUBLIC_API_URL` or edit `extra.apiUrl` in `mobile/app.json`.
 1. **Both phones:** open the app, enter a name, add a few favorite
    books/games (these shape the story).
 2. **Phone A:** Home → *Create a new story* → pick players = 2, a vibe (or leave
-   it to Babel) → *Create guild*. Note the 6-letter invite code.
+   it to Talegate) → *Create guild*. Note the 6-letter invite code.
 3. **Phone B:** Home → *Enter invite code* → type the code → join. Phone A's
    lobby updates live.
 4. **Phone A (host):** *Begin the story*. Claude writes the world, a character
